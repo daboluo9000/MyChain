@@ -1,7 +1,6 @@
 import uuid
 
 
-ss = str(uuid.uuid4()).replace('-', '')
+lands = {}
 
-print(ss)
-
+print(type(lands))

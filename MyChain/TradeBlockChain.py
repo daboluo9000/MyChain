@@ -3,19 +3,21 @@ from urllib.parse import urlparse
 import time
 import simplejson as json
 from flask import Flask
+from flask import request
 import uuid
+import requests
 
 
 class BlockChain(object):
 
     """
-    Construction
+    Construction Method
     """
     def __init__(self):
         self.current_transaction = []
         self.chain = []
         self.nodes = set()
-
+        self.landsAndOwner = {}
         # Create the genesis block
         self.new_block(previous_hash='1', proof=100)
 
@@ -26,28 +28,27 @@ class BlockChain(object):
         return hashlib.sha256(block_string).hexdigest()
 
 
-    def register_node(self, address):
+    def new_nodes(self, identifier):
         """
         Add a new node to the list of nodes
-        :param address: Address of node. Eg. 'http://192.168.0.5:5000'
+        :param identifier: Identifier of node. Eg. '1234567890'
         """
 
-        parsed_url = urlparse(address)
-        if parsed_url.netloc:
-            self.nodes.add(parsed_url.netloc)
-        elif parsed_url.path:
-            # Accepts an URL without scheme like '192.168.0.5:5000'.
-            self.nodes.add(parsed_url.path)
+        if isinstance(identifier, int) and 10000 < identifier < 99999:
+
+            self.nodes.add(identifier)
+
         else:
-            raise ValueError('Invalid URL')
+            raise ValueError('Invalid ID')
 
 
 
-    def new_transaction(self, sender, recipient, amount):
+    def new_transaction(self, sender, recipient, land_id, amount):
 
         self.current_transaction.append({
             'sender' : sender,
             'recipient' : recipient,
+            'land_id'   : land_id,
             'amount' : amount
 
         })
@@ -82,7 +83,11 @@ class BlockChain(object):
 
 
     def proof_of_work(self, last_proof):
-        pass
+
+        
+
+
+
 
 
     @staticmethod
@@ -98,13 +103,31 @@ node_id = str(uuid.uuid4()).replace('-', '')
 blockchain = BlockChain()
 
 
-def mine()
+@app.route('/nodes/register', methods=['POST'])
+def register_nodes():
+
+    values = request.get_json()
+
+    nodes = values.get('nodes')
+    if nodes is None:
+        return "Error: Please supply a valid list of nodes", 400
+
+    for node in nodes:
+        blockchain.new_nodes(node)
+
+    response = {
+        'message': 'New nodes have been added',
+        'total_nodes': list(blockchain.nodes),
+    }
+    return json.dumps(response), 201
 
 
 
-
-
+@app.route('/test')
+def testonly():
+    return "testonly"
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5656)
+    app.run(host='localhost', port=5656)
+

@@ -181,16 +181,34 @@ def new_trade():
 
 @app.route('/makedeal', methods=['POST'])
 def make_deal():
+
+    """
+    sample json:
+    {
+        'success' : [{'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'， ‘contract_id' : 123456}],
+        'reject' :  [{'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'},
+                    {'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'},
+                    {'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'}
+                    ]
+    }
+
+
+    """
     trade_list = request.get_json()
-    required_values = ['trade_id', 'sender', 'recipient', 'land_id', 'status', 'contract_id']
-    if not all(key in trade_list for key in required_values):
-        return 'Information Incomplete, need trade info', 400
-
-
+    success_values = ['trade_id', 'sender', 'recipient', 'land_id', 'contract_id']
+    reject_values = ['trade_id', 'sender', 'recipient', 'land_id']
     compare_trade_list = []
     flag = False
     # Unsolved Condition : contract_id needs to be validated
     contract_id = ''
+
+    if not all(key in trade_list['success'] for key in success_values):
+        return 'Information Incomplete, need success trade info', 400
+
+    if not all(key in trade_list['reject'] for key in reject_values):
+        return 'Information Incomplete, need reject trade info', 400
+
+
 
     for trade in infoblockchain.current_trade_list:
         for value in trade_list:

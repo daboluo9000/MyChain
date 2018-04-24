@@ -2,6 +2,7 @@ import time
 import simplejson
 import hashlib
 import uuid
+import copy
 from flask import Flask
 from flask import request
 from flask import jsonify
@@ -15,8 +16,8 @@ class InfoBlockChain(object):
         self.current_trade_list = []
         self.infoBlockChain = []
         # Param land_owner_info can be load by a function for the real data
-        self.new_block(success_trade=[], reject_trade=[], contract_id="", previous_hash='1',
-                       land_owner_info={'land1': 10000, 'land2': 33333, 'land3': 12345})
+        self.new_block(success_trade=[], reject_trade=[], previous_hash='1',
+                       land_owner_info={'land1': 11111, 'land2': 33333, 'land3': 12345})
 
 
     def register_account(self, identifier):
@@ -33,12 +34,11 @@ class InfoBlockChain(object):
         else:
             raise ValueError('Invalid ID')
 
-    def new_block(self, success_trade, reject_trade, contract_id, previous_hash, land_owner_info):
+    def new_block(self, success_trade, reject_trade, previous_hash, land_owner_info):
         """
         Create a new Block in the InfoBlockChain
         :param success_trade: success_trade
         :param reject_trade: reject trade list
-        :param contract_id: The evidence of the land trade eg. contract number
         :param previous_hash: Hash of previous Block
         :param land_owner_info the land owner information
         :return: New Block
@@ -48,7 +48,6 @@ class InfoBlockChain(object):
             'index': len(self.infoBlockChain) + 1,
             'timestamp': 'UTC ' + time.asctime(time.gmtime()),
             'success_trade': success_trade,
-            'contract_id': contract_id,
             'reject_trade' : reject_trade,
             'previous_hash': previous_hash or self.hash(self.infoBlockChain[-1]),
             'land_owner_info' : land_owner_info
@@ -66,7 +65,7 @@ class InfoBlockChain(object):
 
 
 
-    def new_trade(self, trade_id, sender, recipient, land_id, pay) :
+    def new_trade(self, trade_id, sender, recipient, land_id, pay, contract_id) :
         """
         Creates a new transaction to go into the next mined Block
         :param trade_id: trade id
@@ -74,6 +73,7 @@ class InfoBlockChain(object):
         :param recipient: Address of the Recipient
         :param land_id: land_id
         :param pay: payment
+        :param contract_id: contract_id
         :return: The index of the Block that will hold this transaction
         """
         self.current_trade_list.append({
@@ -82,6 +82,7 @@ class InfoBlockChain(object):
             'recipient': recipient,
             'land_id': land_id,
             'pay' : pay,
+            'contract_id' : contract_id,
             'request_timestamp' : 'UTC ' + time.asctime(time.gmtime())
         })
 
@@ -104,9 +105,6 @@ class InfoBlockChain(object):
 
 
 app = Flask(__name__)
-
-global_trade_id = str(uuid.uuid4()).replace('-', '')
-
 
 infoblockchain = InfoBlockChain()
 
@@ -158,18 +156,32 @@ def get_trade_list(account):
 
 @app.route('/newtrade', methods=['POST'])
 def new_trade():
+    """
+    sample json:
+    {
+        "sender" : 11111,
+        "recipient" : 33333,
+        "land_id" : "land2",
+        "pay" : 123123
+    }
+    """
+
     values = request.get_json()
-    print(values)
+
     required_keys = ['sender', 'recipient', 'land_id', 'pay']
+
     if not all(key in values for key in required_keys):
         return 'Missing Value', 400
 
     if values['sender'] not in infoblockchain.accounts:
         return 'Sender account not valid', 400
 
+    land_id = values['land_id']
+
     if values['recipient'] not in infoblockchain.accounts or \
-            values['recipient'] != infoblockchain.last_block()['land_owner_info'][values['land_id']]:
+            values['recipient'] != infoblockchain.last_block['land_owner_info'][land_id]:
         return 'Recipient account not valid', 400
+
 
     if infoblockchain.infoBlockChain.__len__() > 1:
         if values['land_id'] not in infoblockchain.last_block()['land_owner_info'].keys():
@@ -177,10 +189,11 @@ def new_trade():
 
 
     # Create a new trade
-    infoblockchain.new_trade(global_trade_id, values['sender'], values['recipient'],
-                             values['land_id'], values['pay'])
+    trad_id = str(uuid.uuid4()).replace('-', '')
+    infoblockchain.new_trade(trade_id=trad_id, sender=values['sender'], recipient=values['recipient'],
+                             land_id=values['land_id'], pay=values['pay'], contract_id='N/A')
 
-    response = {'message' : f'New Trade Request Created, Trade ID:{new_block_index}'}
+    response = {'message' : f'New Trade Request Created, Trade ID is {trad_id}'}
     return jsonify(response), 201
 
 
@@ -192,8 +205,8 @@ def make_deal():
     {
         'success' : [{'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'， ‘contract_id' : 123456}],
         'reject' :  [{'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'},
-                    {'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'},
-                    {'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'}
+                    {'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1'， ‘reason' : 'lower payment'},
+                    {'trade_id' : 1234, 'sender' : 33333, 'recipient' : 12345, 'land_id' : 'land1', 'reason' : 'late request'}
                     ]
     }
 
@@ -201,53 +214,75 @@ def make_deal():
     """
     trade_list = request.get_json()
     success_values = ['trade_id', 'sender', 'recipient', 'land_id', 'contract_id']
-    reject_values = ['trade_id', 'sender', 'recipient', 'land_id']
+    reject_values = ['trade_id', 'sender', 'recipient', 'land_id', 'reason']
 
-    if not all(key in trade_list['success'] for key in success_values and trade_list['success'].__len__() > 1):
+
+    if not all(key in trade_list['success'][0] for key in success_values):
         return 'Information Incomplete, need valid success trade info', 400
 
-    if not all(key in trade_list['reject'] for key in reject_values):
+    if not all(key in trade_list['reject'][0] for key in reject_values):
         return 'Information Incomplete, need reject trade info', 400
 
 
 
     # Unsolved Condition : contract_id needs to be validated
-    contract_id = trade_list['success']['contract_id']
-    success_trade = ''
+    contract_id = trade_list['success'][0]['contract_id']
+    success_trade = []
     reject_trade = []
-    # Unsolved Condition : the trade list is continuously increasing
-    for trade in infoblockchain.current_trade_list:
 
-        if trade['trade_id'] == trade_list['success']['trade_id']:
-            success_trade = trade_list['success']
+
+    # Land owner info
+    last_block = infoblockchain.last_block
+    previous_hash = InfoBlockChain.hash(last_block)
+    new_land_owner_info = copy.deepcopy(last_block['land_owner_info'])
+
+    # Validate Contract ID
+    if not trade_list['success'][0]['contract_id'] > 0:
+        return "Contract ID is not valid", 400
+
+    for trade in infoblockchain.current_trade_list:
+        for success in trade_list['success']:
+            if success['trade_id'] == trade['trade_id']:
+                success_trade.append(success)
+                new_land_owner_info[success['land_id']] = success['sender']
             continue
         for reject in trade_list['reject']:
             if reject['trade_id'] == trade['trade_id']:
                 reject_trade.append(reject)
 
+    if success_trade is None:
+        return "Success ID not Valid"
 
     # Create a TradeBlock!!!!
-
-
-
-
+    #
+    #
+    #
+    #
+    #
 
 
 
 
 
     # Add a new Block
-    last_block = InfoBlockChain.last_block()
-    previous_hash = InfoBlockChain.hash(last_block)
-    previous_land_owner_info = last_block['land_owner_info']
-    land_id = trade_list['success']['land_id']
-    previous_land_owner_info[land_id] = trade_list['success']['sender']
-    new_land_owner_info = previous_land_owner_info
 
-    block = infoblockchain.new_block(success_trade, reject_trade, contract_id=contract_id,
-                                     previous_hash=previous_hash, new_land_owner_info=new_land_owner_info)
 
-    return "Make Deal! It's added to a new block. Block ID = "+block['index'], 201
+
+
+    block = infoblockchain.new_block(success_trade=success_trade, reject_trade=reject_trade,
+                                     previous_hash=previous_hash, land_owner_info=new_land_owner_info)
+
+    return "Make Deal! It's added to a new block. Block ID = "+str(block['index']), 201
+
+
+@app.route('/chain', methods=['GET'])
+def full_chain():
+    response = {
+        'chain': infoblockchain.infoBlockChain,
+        'length': len(infoblockchain.infoBlockChain),
+    }
+    return jsonify(response), 200
+
 
 if __name__ == '__main__':
     app.debug = True

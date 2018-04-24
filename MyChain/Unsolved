@@ -1,0 +1,10 @@
+InfoBlockChain.py
+
+1. Account validation - one account with password
+
+2. get_trade_list(account) - filter out the trade list which has not relation with the input
+
+3. new_trade() - validate if the trade is already exist - same sender, recipient and land id
+
+4. new_block() - filter out the trade happened after make deal
+               - contract ID needs to be validated by the official data from somewhere
